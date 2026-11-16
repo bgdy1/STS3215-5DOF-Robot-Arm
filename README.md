@@ -127,6 +127,25 @@ immediately, or `q` to save without playing. Choose **2** to play a saved
 sequence. Files are stored in `motions/`; angle inputs use the current calibration
 when played.
 
+Choose **3 — Action generator** to capture poses directly from the arm:
+
+1. Set the file name, for example `pick_up` or `pick_up.json`. Use 1-48 letters,
+   numbers, underscores or hyphens; existing names are rejected to prevent overwriting.
+2. Support the arm, then press Enter to release torque so you can pose it by hand.
+3. Type `q` and press Enter to read all five servo positions. The first capture
+   creates `motions/pick_up.json` using your chosen name.
+4. Move the arm to the next pose, then type `q` and press Enter again. Each capture
+   immediately saves another point in the **same file**, with one pose per line.
+5. Type `e` and press Enter to finish and return to the menu. Ctrl+C also stops
+   capture; all successfully saved poses remain on disk. No file is created if
+   you finish without capturing a pose. Each new generator session uses a new file.
+6. Choose **2** to replay the generated sequence after capturing at least two poses.
+
+Here `q` means **capture**, while `e` means **finish**. The generator saves raw
+position ticks in the existing waypoint JSON format and displays the corresponding
+joint angles. These are pose readings, not torque measurements. Keep supporting
+the arm after recording because torque remains released.
+
 ```sh
 python scripts/05_waypoint_sequence.py
 ```

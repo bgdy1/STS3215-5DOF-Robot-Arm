@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Record paper waypoints and play them back in order."""
+"""Enter or capture waypoints and play them back in order."""
 
 from datetime import datetime
 import json
@@ -19,6 +19,8 @@ from arm_helpers import (
     disable_all_torque,
     enable_all_torque,
     move_all_sync,
+    positions_to_angles,
+    read_all,
     wait_for_servos_or_estop,
 )
 from terminal_keys import RawTerminal
@@ -168,6 +170,82 @@ def create_sequence():
     return path if play_after_save else None
 
 
+def generate_actions():
+    """Save one measured pose per q command, immediately and in one JSON file."""
+    while True:
+        name = input("Set file name (letters, numbers, _ or -; Ctrl+C to cancel): ").strip()
+        if name.lower().endswith(".json"):
+            name = name[:-5]
+        if not NAME_PATTERN.fullmatch(name):
+            print("Use 1-48 letters, numbers, underscores, or hyphens.")
+            continue
+        path = MOTION_FOLDER / f"{name}.json"
+        if path.exists():
+            print(f"{path.name} already exists; choose a new name.")
+            continue
+        break
+    print(f"File: {path}")
+    print("\nAction generator: support the arm before releasing torque.")
+    input("Support the arm, then press Enter to release torque (Ctrl+C to cancel)...")
+    port, packet_handler = connect()
+    sequence = None
+    try:
+        disable_all_torque(packet_handler)
+        print("Torque released. Move the supported arm by hand.")
+        print("Type q + Enter to capture a pose; e + Enter to finish.")
+        print("The first capture creates a new file; later captures add a new point.")
+        while True:
+            command = input("Action generator [q = capture, e = finish]: ").strip().lower()
+            if command in ("e", "exit"):
+                break
+            if command != "q":
+                print("Please enter q to capture or e to finish.")
+                continue
+            try:
+                positions = read_all(packet_handler)
+                angles = positions_to_angles(positions)
+            except (RuntimeError, ValueError) as error:
+                print(f"Pose not saved: {error}. Check the arm and retry q.")
+                continue
+
+            if sequence is None:
+                created_at = datetime.now().astimezone()
+                MOTION_FOLDER.mkdir(exist_ok=True)
+                if path.exists():
+                    raise FileExistsError(f"{path} already exists; choose a new name")
+                sequence = {
+                    "schema_version": 1,
+                    "type": "pose_sequence",
+                    "name": path.stem,
+                    "description": "Poses captured with the action generator",
+                    "input_type": "raw",
+                    "joint_order": [
+                        {"servo_id": settings.SERVO_IDS[joint], "joint": joint}
+                        for joint in settings.JOINT_NAMES
+                    ],
+                    "created_at": created_at.isoformat(timespec="seconds"),
+                    "points": [],
+                }
+
+            sequence["points"].append(
+                {"input_values": [str(positions[joint]) for joint in settings.JOINT_NAMES]}
+            )
+            save_sequence(path, sequence)
+            print(f"Saved pose {len(sequence['points'])} to {path}")
+            for joint in settings.JOINT_NAMES:
+                print(f"  {joint:12s} raw={positions[joint]:4d} angle={angles[joint]:7.2f} deg")
+    except (EOFError, KeyboardInterrupt):
+        print("\nAction generator stopped.")
+    finally:
+        port.closePort()
+    if sequence is None:
+        print("No poses captured; no file created.")
+    else:
+        print(f"Saved {len(sequence['points'])} poses to {path}.")
+        print("Choose menu option 2 to play (at least two poses required).")
+    return path if sequence is not None else None
+
+
 def load_sequence(path):
     sequence = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(sequence, dict) or sequence.get("type") != "pose_sequence":
@@ -275,6 +353,7 @@ def main():
         print("\nWaypoint record and play")
         print("  1. Record waypoints from written-down values")
         print("  2. Play a saved waypoint sequence")
+        print("  3. Action generator (q captures the current arm pose)")
         print("  q. Quit")
         choice = input("Choose an action: ").strip().lower()
         if choice == "q":
@@ -301,8 +380,10 @@ def main():
                 print("Please choose one of the listed numbers.")
                 continue
             play_sequence(sequences[int(selection) - 1][0])
+        elif choice == "3":
+            generate_actions()
         else:
-            print("Please enter 1, 2, or q.")
+            print("Please enter 1, 2, 3, or q.")
 
 
 if __name__ == "__main__":
