@@ -204,6 +204,8 @@ def generate_actions():
             try:
                 positions = read_all(packet_handler)
                 angles = positions_to_angles(positions)
+                angle_values = [f"{angles[joint]:.2f}" for joint in settings.JOINT_NAMES]
+                parse_point_values(angle_values, "angles")
             except (RuntimeError, ValueError) as error:
                 print(f"Pose not saved: {error}. Check the arm and retry q.")
                 continue
@@ -218,7 +220,7 @@ def generate_actions():
                     "type": "pose_sequence",
                     "name": path.stem,
                     "description": "Poses captured with the action generator",
-                    "input_type": "raw",
+                    "input_type": "angles",
                     "joint_order": [
                         {"servo_id": settings.SERVO_IDS[joint], "joint": joint}
                         for joint in settings.JOINT_NAMES
@@ -228,12 +230,12 @@ def generate_actions():
                 }
 
             sequence["points"].append(
-                {"input_values": [str(positions[joint]) for joint in settings.JOINT_NAMES]}
+                {"input_values": angle_values}
             )
             save_sequence(path, sequence)
             print(f"Saved pose {len(sequence['points'])} to {path}")
             for joint in settings.JOINT_NAMES:
-                print(f"  {joint:12s} raw={positions[joint]:4d} angle={angles[joint]:7.2f} deg")
+                print(f"  {joint:12s} angle={angles[joint]:7.2f} deg")
     except (EOFError, KeyboardInterrupt):
         print("\nAction generator stopped.")
     finally:

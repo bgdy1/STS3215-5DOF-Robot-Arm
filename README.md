@@ -141,9 +141,11 @@ Choose **3 — Action generator** to capture poses directly from the arm:
    you finish without capturing a pose. Each new generator session uses a new file.
 6. Choose **2** to replay the generated sequence after capturing at least two poses.
 
-Here `q` means **capture**, while `e` means **finish**. The generator saves raw
-position ticks in the existing waypoint JSON format and displays the corresponding
-joint angles. These are pose readings, not torque measurements. Keep supporting
+Here `q` means **capture**, while `e` means **finish**. The generator saves and
+displays joint angles in degrees, rounded to two decimal places. Its waypoint JSON
+uses `"input_type": "angles"`; playback converts these angles to servo positions
+using the current calibration in `arm_settings.py`. Captures outside the configured
+joint limits are rejected. These are pose readings, not torque measurements. Keep supporting
 the arm after recording because torque remains released.
 
 ```sh

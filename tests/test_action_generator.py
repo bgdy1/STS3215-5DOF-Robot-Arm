@@ -1,3 +1,5 @@
+from contextlib import redirect_stdout
+from io import StringIO
 import json
 import runpy
 import tempfile
@@ -63,11 +65,23 @@ class ActionGeneratorTests(unittest.TestCase):
             return reply
 
         answer.index = 0
-        path = self.run_generator(answer)
+        output = StringIO()
+        with redirect_stdout(output):
+            path = self.run_generator(answer)
         self.assertEqual(path, self.path / "pick_up.json")
         data, poses = generator_module["load_sequence"](path)
         self.assertEqual(poses, [self.first_pose, self.second_pose])
         self.assertEqual(data["name"], path.stem)
+        self.assertEqual(data["input_type"], "angles")
+        self.assertEqual(
+            data["points"],
+            [
+                {"input_values": ["0.00", "4.57", "13.36", "22.15", "-30.94"]},
+                {"input_values": ["-4.22", "0.18", "8.96", "17.75", "-26.54"]},
+            ],
+        )
+        self.assertIn("angle=", output.getvalue())
+        self.assertNotIn("raw=", output.getvalue())
         point_lines = [line for line in path.read_text().splitlines() if '"input_values"' in line]
         self.assertEqual(len(point_lines), 2)
         self.disable.assert_called_once_with(self.packet_handler)
@@ -83,14 +97,15 @@ class ActionGeneratorTests(unittest.TestCase):
         self.read.side_effect = [
             RuntimeError("servo timeout"),
             {**self.first_pose, "wrist": -1},
+            {**self.first_pose, "base_yaw": 4095},
             self.second_pose,
         ]
-        path = self.run_generator(["retry", "", "bad", "", "q", "q", " Q ", "e"])
+        path = self.run_generator(["retry", "", "bad", "", "q", "q", "q", " Q ", "e"])
         data = json.loads(path.read_text())
         self.assertEqual(len(data["points"]), 1)
         self.assertEqual(
             data["points"][0]["input_values"],
-            [str(self.second_pose[joint]) for joint in settings.JOINT_NAMES],
+            ["-4.22", "0.18", "8.96", "17.75", "-26.54"],
         )
 
     def test_interrupt_preserves_saved_pose_and_closes_port(self):
